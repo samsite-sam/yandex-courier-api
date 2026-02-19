@@ -3,7 +3,7 @@
  * Plugin Name: Яндекс Курьер - АвтоПостинг
  * Plugin URI: https://eda---yandex.ru/
  * Description: Автоматическая генерация и публикация SEO-оптимизированных статей о работе курьером в Яндекс Еда.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Yandex Courier Team
  * License: GPL v2 or later
  */
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('YCAP_VERSION', '1.0.1');
+define('YCAP_VERSION', '1.0.2');
 
 // Активация плагина
 register_activation_hook(__FILE__, function() {
@@ -64,7 +64,7 @@ function ycap_admin_page() {
         if (is_wp_error($result)) {
             echo '<div class="notice notice-error"><p>Ошибка: ' . esc_html($result->get_error_message()) . '</p></div>';
         } else {
-            echo '<div class="notice notice-success"><p>Статья создана! <a href="' . esc_url(get_edit_post_link($result)) . '">Редактировать</a></p></div>';
+            echo '<div class="notice notice-success"><p>Статья создана! <a href="' . esc_url(get_edit_post_link($result)) . '">Редактировать</a> | <a href="' . esc_url(get_permalink($result)) . '" target="_blank">Просмотр</a></p></div>';
         }
     }
 
@@ -148,12 +148,12 @@ function ycap_admin_page() {
                 <p>
                     <button type="submit" name="ycap_save_settings" class="button button-primary">Сохранить настройки</button>
                     <button type="submit" name="ycap_test_api" class="button">Проверить API</button>
-                    <button type="submit" name="ycap_generate_now" class="button" style="background: #ffd500; border-color: #e6c200; color: #000;">Сгенерировать статью</button>
+                    <button type="submit" name="ycap_generate_now" class="button" style="background: #ffd500; border-color: #e6c200; color: #000; font-weight: bold;">🚀 Сгенерировать статью</button>
                 </p>
 
                 <?php if ($api_test !== null): ?>
                     <?php if ($api_test['success']): ?>
-                        <div class="notice notice-success inline"><p>✅ API доступен!</p></div>
+                        <div class="notice notice-success inline"><p>✅ API доступен! Провайдер: <?php echo esc_html($api_test['provider'] ?? 'YandexGPT'); ?></p></div>
                     <?php else: ?>
                         <div class="notice notice-error inline"><p>❌ Ошибка: <?php echo esc_html($api_test['error']); ?></p></div>
                     <?php endif; ?>
@@ -166,16 +166,66 @@ function ycap_admin_page() {
         $total = count(get_posts(array('meta_key' => '_ycap_generated', 'meta_value' => '1', 'numberposts' => -1, 'fields' => 'ids')));
         $today = count(get_posts(array('meta_key' => '_ycap_generated', 'meta_value' => '1', 'date_query' => array(array('after' => 'today')), 'numberposts' => -1, 'fields' => 'ids')));
         $next = wp_next_scheduled('ycap_daily_generation');
+
+        // Последние статьи
+        $recent = get_posts(array(
+            'meta_key' => '_ycap_generated',
+            'meta_value' => '1',
+            'numberposts' => 5,
+            'orderby' => 'date',
+            'order' => 'DESC'
+        ));
         ?>
 
         <div class="card" style="max-width: 800px; margin-top: 20px;">
-            <h2>Статистика</h2>
+            <h2>📊 Статистика</h2>
             <table class="form-table">
-                <tr><th>Всего статей</th><td><?php echo esc_html($total); ?></td></tr>
-                <tr><th>Сегодня</th><td><?php echo esc_html($today); ?></td></tr>
+                <tr><th>Всего статей</th><td><strong><?php echo esc_html($total); ?></strong></td></tr>
+                <tr><th>Сегодня</th><td><strong><?php echo esc_html($today); ?></strong></td></tr>
                 <tr><th>Следующая генерация</th><td><?php echo $next ? esc_html(get_date_from_gmt(date('Y-m-d H:i:s', $next))) : 'Не запланировано'; ?></td></tr>
             </table>
         </div>
+
+        <?php if ($recent): ?>
+        <div class="card" style="max-width: 800px; margin-top: 20px;">
+            <h2>📝 Последние статьи</h2>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th>Заголовок</th>
+                        <th>Дата</th>
+                        <th>Статус</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($recent as $post): ?>
+                    <tr>
+                        <td>
+                            <?php if (has_post_thumbnail($post->ID)): ?>
+                            <span style="margin-right: 8px;">🖼️</span>
+                            <?php endif; ?>
+                            <a href="<?php echo esc_url(get_edit_post_link($post->ID)); ?>">
+                                <?php echo esc_html($post->post_title); ?>
+                            </a>
+                        </td>
+                        <td><?php echo esc_html(get_the_date('d.m.Y H:i', $post->ID)); ?></td>
+                        <td>
+                            <?php
+                            $status = get_post_status($post->ID);
+                            echo $status === 'publish' ? '<span style="color: green;">✅ Опубликовано</span>' : '<span style="color: orange;">📝 Черновик</span>';
+                            ?>
+                        </td>
+                        <td>
+                            <a href="<?php echo esc_url(get_edit_post_link($post->ID)); ?>" class="button button-small">Редактировать</a>
+                            <a href="<?php echo esc_url(get_permalink($post->ID)); ?>" class="button button-small" target="_blank">Просмотр</a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
     </div>
     <?php
 }
@@ -197,7 +247,11 @@ function ycap_test_api($endpoint) {
         return array('success' => false, 'error' => "HTTP {$code}");
     }
 
-    return array('success' => true);
+    $body = json_decode(wp_remote_retrieve_body($response), true);
+    return array(
+        'success' => true,
+        'provider' => $body['provider'] ?? 'Unknown'
+    );
 }
 
 // Генерация статьи
@@ -210,7 +264,7 @@ function ycap_generate_article() {
     }
 
     $response = wp_remote_post(rtrim($endpoint, '/') . '/full', array(
-        'timeout' => 120,
+        'timeout' => 180,
         'headers' => array('Content-Type' => 'application/json'),
         'body' => json_encode(array(
             'referralLink' => $settings['referral_link'] ?? ''
@@ -224,7 +278,8 @@ function ycap_generate_article() {
 
     $code = wp_remote_retrieve_response_code($response);
     if ($code !== 200) {
-        return new WP_Error('http_error', "HTTP {$code}");
+        $body = wp_remote_retrieve_body($response);
+        return new WP_Error('http_error', "HTTP {$code}: {$body}");
     }
 
     $body = json_decode(wp_remote_retrieve_body($response), true);
@@ -263,38 +318,66 @@ function ycap_generate_article() {
     }
 
     // Загрузка изображения
-    if (!empty($article['image']['url'])) {
-        ycap_upload_featured_image($post_id, $article['image']['url'], $article['title']);
+    if (!empty($article['image'])) {
+        ycap_upload_featured_image($post_id, $article['image'], $article['title']);
     }
 
     return $post_id;
 }
 
-// Загрузка изображения
-function ycap_upload_featured_image($post_id, $image_url, $title) {
+// Загрузка изображения (поддержка base64 и URL)
+function ycap_upload_featured_image($post_id, $image_data, $title) {
     require_once(ABSPATH . 'wp-admin/includes/file.php');
     require_once(ABSPATH . 'wp-admin/includes/media.php');
     require_once(ABSPATH . 'wp-admin/includes/image.php');
 
-    $temp = download_url($image_url, 60);
-    if (is_wp_error($temp)) {
+    $temp_file = false;
+    $file_array = array();
+
+    // Проверяем, это base64 или URL
+    if (!empty($image_data['base64']) && strpos($image_data['base64'], 'data:image') === 0) {
+        // Base64 изображение от AI
+        $base64_data = substr($image_data['base64'], strpos($image_data['base64'], ',') + 1);
+        $image_binary = base64_decode($base64_data);
+
+        if ($image_binary) {
+            $temp_file = wp_tempnam('ycap_image_' . $post_id . '.png');
+            file_put_contents($temp_file, $image_binary);
+            $file_array = array(
+                'name' => 'ycap-' . $post_id . '.png',
+                'tmp_name' => $temp_file
+            );
+        }
+    } elseif (!empty($image_data['url'])) {
+        // URL изображения
+        $temp_file = download_url($image_data['url'], 60);
+        if (!is_wp_error($temp_file)) {
+            $file_array = array(
+                'name' => 'ycap-' . $post_id . '.jpg',
+                'tmp_name' => $temp_file
+            );
+        }
+    }
+
+    if (empty($file_array)) {
         return false;
     }
 
-    $file = array(
-        'name' => 'ycap-' . $post_id . '.jpg',
-        'tmp_name' => $temp
-    );
+    // Загрузка в медиабиблиотеку
+    $attach_id = media_handle_sideload($file_array, $post_id, $title);
 
-    $attach_id = media_handle_sideload($file, $post_id, $title);
-
-    if (!is_wp_error($attach_id)) {
-        set_post_thumbnail($post_id, $attach_id);
-        update_post_meta($attach_id, '_wp_attachment_image_alt', sanitize_text_field($title));
+    if (is_wp_error($attach_id)) {
+        @unlink($temp_file);
+        return false;
     }
 
-    @unlink($temp);
-    return !is_wp_error($attach_id) ? $attach_id : false;
+    // Устанавливаем как featured image
+    set_post_thumbnail($post_id, $attach_id);
+
+    // Alt текст
+    update_post_meta($attach_id, '_wp_attachment_image_alt', sanitize_text_field($title));
+
+    return $attach_id;
 }
 
 // Ежедневная генерация
@@ -304,6 +387,6 @@ add_action('ycap_daily_generation', function() {
 
     for ($i = 0; $i < $count; $i++) {
         ycap_generate_article();
-        sleep(2);
+        sleep(3);
     }
 });

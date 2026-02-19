@@ -62,49 +62,6 @@ async function generateWithYandexGPT(prompt: string, maxTokens: number = 4000): 
   return data.result?.alternatives?.[0]?.message?.text || "";
 }
 
-// Generate image using YandexART
-async function generateImage(prompt: string): Promise<string> {
-  const iamToken = await getIamToken();
-
-  const response = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${iamToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      modelUri: `art://${YANDEX_FOLDER_ID}/yandexart/latest`,
-      generationOptions: {
-        seed: Math.floor(Math.random() * 1000000),
-        aspectRatio: {
-          widthRatio: "16",
-          heightRatio: "9"
-        }
-      },
-      messages: [
-        {
-          weight: 1,
-          text: prompt
-        }
-      ]
-    })
-  });
-
-  if (!response.ok) {
-    console.error("YandexART error:", response.status);
-    return "";
-  }
-
-  const data = await response.json();
-
-  // Get the image from response
-  if (data.result?.image) {
-    return `data:image/png;base64,${data.result.image}`;
-  }
-
-  return "";
-}
-
 // Keywords for SEO
 const KEYWORDS = [
   "работа курьером яндекс еда",
@@ -137,13 +94,48 @@ const ARTICLE_TOPICS = [
   "Карьерный рост курьера в Яндекс Еда"
 ];
 
-// Image prompts for articles
-const IMAGE_PROMPTS = [
-  "Курьер в желтой куртке доставляет еду на велосипеде, современный город, солнечный день, профессиональное фото",
-  "Молодой человек с рюкзаком курьера смотрит в смартфон, городская улица, качественное фото",
-  "Курьер на электровелосипеде везет заказ, многоэтажные здания на фоне, динамичный кадр",
-  "Девушка-курьер с термосумкой улыбается в камеру, дневной свет, профессиональная съемка",
-  "Курьер пешком с сумкой Яндекс Еда идет по парку, приятная атмосфера, качественное фото"
+// Reliable images - direct URLs from Unsplash
+const ARTICLE_IMAGES = [
+  {
+    url: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1200&h=800&fit=crop",
+    alt: "Курьер доставляет заказ"
+  },
+  {
+    url: "https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?w=1200&h=800&fit=crop",
+    alt: "Доставка еды на велосипеде"
+  },
+  {
+    url: "https://images.unsplash.com/photo-1526512348257-207fd7aa25a7?w=1200&h=800&fit=crop",
+    alt: "Курьер с термосумкой"
+  },
+  {
+    url: "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=1200&h=800&fit=crop",
+    alt: "Доставка в городе"
+  },
+  {
+    url: "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1200&h=800&fit=crop",
+    alt: "Курьер на электровелосипеде"
+  },
+  {
+    url: "https://images.unsplash.com/photo-1595341595379-cf1cd0ed7ad1?w=1200&h=800&fit=crop",
+    alt: "Молодой курьер"
+  },
+  {
+    url: "https://images.unsplash.com/photo-1544724107-6d5c4caaff30?w=1200&h=800&fit=crop",
+    alt: "Доставка заказов"
+  },
+  {
+    url: "https://images.unsplash.com/photo-1601599963565-b7f49dfffc14?w=1200&h=800&fit=crop",
+    alt: "Курьер в городе"
+  },
+  {
+    url: "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=1200&h=800&fit=crop",
+    alt: "Велокурьер"
+  },
+  {
+    url: "https://images.unsplash.com/photo-1516733968668-dbdce39c4651?w=1200&h=800&fit=crop",
+    alt: "Служба доставки"
+  }
 ];
 
 const DEFAULT_REFERRAL_LINK = "https://reg.eda.yandex.ru/?advertisement_campaign=forms_for_agents&user_invite_code=7dc31006022f4ab4bfa385dbfcc893b2&utm_content=blank";
@@ -207,20 +199,8 @@ ${referralLink}
       };
     }
 
-    // Generate image with YandexART
-    const imagePrompt = IMAGE_PROMPTS[Math.floor(Math.random() * IMAGE_PROMPTS.length)];
-    let imageData = "";
-
-    try {
-      console.log("[Article Generator] Generating image...");
-      imageData = await generateImage(imagePrompt);
-      console.log("[Article Generator] Image generated:", imageData ? "success" : "failed");
-    } catch (imgError) {
-      console.error("[Article Generator] Image generation failed:", imgError);
-    }
-
-    // Fallback to Lorem Picsum if YandexART fails
-    const imageUrl = imageData || `https://picsum.photos/seed/${Date.now()}/1200/800`;
+    // Select random image from reliable collection
+    const randomImage = ARTICLE_IMAGES[Math.floor(Math.random() * ARTICLE_IMAGES.length)];
 
     const result = {
       title: article.title,
@@ -230,9 +210,8 @@ ${referralLink}
       excerpt: article.excerpt,
       content: article.content,
       image: {
-        url: imageUrl,
-        alt: article.title || topic,
-        base64: imageData || null
+        url: randomImage.url,
+        alt: article.title || randomImage.alt
       },
       metadata: {
         generatedAt: new Date().toISOString(),
@@ -259,9 +238,11 @@ export async function GET() {
     const iamToken = await getIamToken();
     return NextResponse.json({
       status: "ok",
-      service: "Yandex Courier Article Generator (YandexGPT + YandexART)",
-      version: "2.1.0",
-      yandexConnected: !!iamToken
+      service: "Yandex Courier Article Generator",
+      version: "2.2.0",
+      provider: "YandexGPT",
+      yandexConnected: !!iamToken,
+      imagesAvailable: ARTICLE_IMAGES.length
     });
   } catch (error: any) {
     return NextResponse.json({

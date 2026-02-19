@@ -62,6 +62,96 @@ async function generateWithYandexGPT(prompt: string, maxTokens: number = 4000): 
   return data.result?.alternatives?.[0]?.message?.text || "";
 }
 
+// Generate image with YandexART
+async function generateImageWithYandexArt(prompt: string): Promise<string | null> {
+  try {
+    const iamToken = await getIamToken();
+
+    console.log("[YandexART] Generating image...");
+
+    const response = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${iamToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        modelUri: `art://${YANDEX_FOLDER_ID}/yandexart/latest`,
+        generationOptions: {
+          seed: Math.floor(Math.random() * 10000000),
+          aspectRatio: {
+            widthRatio: "16",
+            heightRatio: "9"
+          }
+        },
+        messages: [
+          {
+            weight: 1,
+            text: prompt
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[YandexART] Error:", response.status, errorText);
+      return null;
+    }
+
+    const data = await response.json();
+    console.log("[YandexART] Response:", JSON.stringify(data).substring(0, 200));
+
+    // Check if response has image directly
+    if (data.result?.image) {
+      return `data:image/png;base64,${data.result.image}`;
+    }
+
+    // Check if it's an async operation
+    if (data.id) {
+      // Poll for result
+      const operationId = data.id;
+      let attempts = 0;
+      const maxAttempts = 30;
+
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const statusResponse = await fetch(
+          `https://llm.api.cloud.yandex.net/foundationModels/v1/imageGeneration/${operationId}`,
+          {
+            headers: {
+              "Authorization": `Bearer ${iamToken}`
+            }
+          }
+        );
+
+        if (!statusResponse.ok) {
+          attempts++;
+          continue;
+        }
+
+        const statusData = await statusResponse.json();
+
+        if (statusData.result?.image) {
+          return `data:image/png;base64,${statusData.result.image}`;
+        }
+
+        if (statusData.done) {
+          break;
+        }
+
+        attempts++;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("[YandexART] Exception:", error);
+    return null;
+  }
+}
+
 // Keywords for SEO
 const KEYWORDS = [
   "работа курьером яндекс еда",
@@ -94,48 +184,13 @@ const ARTICLE_TOPICS = [
   "Карьерный рост курьера в Яндекс Еда"
 ];
 
-// Reliable images - direct URLs from Unsplash
-const ARTICLE_IMAGES = [
-  {
-    url: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1200&h=800&fit=crop&q=80",
-    alt: "Курьер доставляет заказ"
-  },
-  {
-    url: "https://images.unsplash.com/photo-1566576912321-d58ddd7a6088?w=1200&h=800&fit=crop&q=80",
-    alt: "Доставка еды на велосипеде"
-  },
-  {
-    url: "https://images.unsplash.com/photo-1526512348257-207fd7aa25a7?w=1200&h=800&fit=crop&q=80",
-    alt: "Курьер с термосумкой"
-  },
-  {
-    url: "https://images.unsplash.com/photo-1580674285054-bed31e145f59?w=1200&h=800&fit=crop&q=80",
-    alt: "Доставка в городе"
-  },
-  {
-    url: "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1200&h=800&fit=crop&q=80",
-    alt: "Курьер на электровелосипеде"
-  },
-  {
-    url: "https://images.unsplash.com/photo-1595341595379-cf1cd0ed7ad1?w=1200&h=800&fit=crop&q=80",
-    alt: "Молодой курьер"
-  },
-  {
-    url: "https://images.unsplash.com/photo-1544724107-6d5c4caaff30?w=1200&h=800&fit=crop&q=80",
-    alt: "Доставка заказов"
-  },
-  {
-    url: "https://images.unsplash.com/photo-1601599963565-b7f49dfffc14?w=1200&h=800&fit=crop&q=80",
-    alt: "Курьер в городе"
-  },
-  {
-    url: "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=1200&h=800&fit=crop&q=80",
-    alt: "Велокурьер"
-  },
-  {
-    url: "https://images.unsplash.com/photo-1516733968668-dbdce39c4651?w=1200&h=800&fit=crop&q=80",
-    alt: "Служба доставки"
-  }
+// Image generation prompts
+const IMAGE_PROMPTS = [
+  "courier on yellow bicycle delivering food in modern russian city, sunny day, professional photo, high quality",
+  "delivery person with thermal bag walking in city street, russia, daytime, realistic photo",
+  "young courier on electric bike with delivery backpack, urban environment, professional photography",
+  "food delivery worker checking smartphone with orders, modern city background, quality photo",
+  "bicycle courier in yellow jacket riding through city, russia, sunny weather, professional shot"
 ];
 
 const DEFAULT_REFERRAL_LINK = "https://reg.eda.yandex.ru/?advertisement_campaign=forms_for_agents&user_invite_code=7dc31006022f4ab4bfa385dbfcc893b2&utm_content=blank";
@@ -200,8 +255,17 @@ ${referralLink}
       };
     }
 
-    // Select random image from reliable collection
-    const randomImage = ARTICLE_IMAGES[Math.floor(Math.random() * ARTICLE_IMAGES.length)];
+    // Generate image with YandexART
+    const imagePrompt = IMAGE_PROMPTS[Math.floor(Math.random() * IMAGE_PROMPTS.length)];
+    let imageBase64 = null;
+
+    try {
+      console.log("[Article Generator] Generating image with YandexART...");
+      imageBase64 = await generateImageWithYandexArt(imagePrompt);
+      console.log("[Article Generator] YandexART result:", imageBase64 ? "success" : "failed");
+    } catch (imgError) {
+      console.error("[Article Generator] Image generation error:", imgError);
+    }
 
     const result = {
       title: article.title,
@@ -211,17 +275,19 @@ ${referralLink}
       excerpt: article.excerpt,
       content: article.content,
       image: {
-        url: randomImage.url,
-        alt: article.title || randomImage.alt
+        url: imageBase64 || "",
+        base64: imageBase64 || "",
+        alt: article.title || topic
       },
       metadata: {
         generatedAt: new Date().toISOString(),
         topic: topic,
-        wordCount: article.content?.replace(/<[^>]*>/g, "").split(/\s+/).length || 0
+        wordCount: article.content?.replace(/<[^>]*>/g, "").split(/\s+/).length || 0,
+        imageSource: imageBase64 ? "yandexart" : "none"
       }
     };
 
-    console.log(`[Article Generator] Success: ${result.title} (${result.metadata.wordCount} words)`);
+    console.log(`[Article Generator] Success: ${result.title} (${result.metadata.wordCount} words, image: ${result.metadata.imageSource})`);
 
     return NextResponse.json({
       success: true,
@@ -240,11 +306,10 @@ export async function GET() {
     return NextResponse.json({
       status: "ok",
       service: "Yandex Courier Article Generator",
-      version: "2.3.0",
-      provider: "YandexGPT",
+      version: "3.0.0",
+      provider: "YandexGPT + YandexART",
       year: 2026,
-      yandexConnected: !!iamToken,
-      imagesAvailable: ARTICLE_IMAGES.length
+      yandexConnected: !!iamToken
     });
   } catch (error: any) {
     return NextResponse.json({

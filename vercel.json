@@ -1,7 +1,4 @@
 {
-  "buildCommand": "bun run build",
-  "installCommand": "bun install",
-  "devCommand": "bun run dev",
   "framework": "nextjs",
   "functions": {
     "src/app/api/article-generator/**/*.ts": {
